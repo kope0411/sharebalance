@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>収支管理（共有）</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont; padding: 12px; }
+    h1 { font-size: 1.2rem; }
+    label { display: block; margin-top: 8px; }
+    input, select, button { width: 100%; padding: 8px; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>共有 収支管理アプリ</h1>
+
+  <h2>新規入力</h2>
+  <label>氏名</label>
+  <select id="nameSelect"></select>
+
+  <label>金額（+ / -）</label>
+  <input id="amount" type="number" placeholder="例: 1000 / -500" />
+
+  <label>日付</label>
+  <input id="date" type="date" />
+
+  <button onclick="addEntry()">追加</button>
+
+  <h2>氏名の追加・編集</h2>
+  <div class="row">
+    <input id="newName" placeholder="新しい氏名" />
+    <button onclick="addName()">追加</button>
+  </div>
+
+  <h2>収支一覧</h2>
+  <table>
+    <thead>
+      <tr><th>氏名</th><th>金額</th><th>日付</th></tr>
+    </thead>
+    <tbody id="entries"></tbody>
+  </table>
+
+  <h2>合計（氏名ごと）</h2>
+  <table>
+    <thead>
+      <tr><th>氏名</th><th>合計</th></tr>
+    </thead>
+    <tbody id="totals"></tbody>
+  </table>
+
+  <script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCzGHaax123Mtu8MhQ7a7DBsFklXdGcDYg",
+    authDomain: "sharebalance-12eed.firebaseapp.com",
+    projectId: "sharebalance-12eed",
+    storageBucket: "sharebalance-12eed.firebasestorage.app",
+    messagingSenderId: "778895785853",
+    appId: "1:778895785853:web:7efaf0754f283e6a015614",
+    measurementId: "G-MDCJMN4DXZ"
+  };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const nameSelect = document.getElementById('nameSelect');
+    const entriesTbody = document.getElementById('entries');
+    const totalsTbody = document.getElementById('totals');
+
+    // 氏名一覧の取得
+    db.collection('names').onSnapshot(snapshot => {
+      nameSelect.innerHTML = '';
+      snapshot.forEach(doc => {
+        const opt = document.createElement('option');
+        opt.value = doc.data().name;
+        opt.textContent = doc.data().name;
+        nameSelect.appendChild(opt);
+      });
+    });
+
+    // 収支一覧の取得
+    db.collection('entries').orderBy('date').onSnapshot(snapshot => {
+      entriesTbody.innerHTML = '';
+      const totals = {};
+
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${d.name}</td><td>${d.amount}</td><td>${d.date}</td>`;
+        entriesTbody.appendChild(tr);
+
+        if (!totals[d.name]) totals[d.name] = 0;
+        totals[d.name] += d.amount;
+      });
+
+      // 合計表示
+      totalsTbody.innerHTML = '';
+      Object.keys(totals).forEach(name => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${name}</td><td>${totals[name]}</td>`;
+        totalsTbody.appendChild(tr);
+      });
+    });
+
+    function addName() {
+      const name = document.getElementById('newName').value;
+      if (!name) return;
+      db.collection('names').add({ name });
+      document.getElementById('newName').value = '';
+    }
+
+    function addEntry() {
+      const name = nameSelect.value;
+      const amount = Number(document.getElementById('amount').value);
+      const date = document.getElementById('date').value;
+      if (!name || !amount || !date) return alert('すべて入力してください');
+
+      db.collection('entries').add({ name, amount, date });
+      document.getElementById('amount').value = '';
+      document.getElementById('date').value = '';
+    }
+  </script>
+</body>
+</html>
