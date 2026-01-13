@@ -15,12 +15,14 @@
     th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
     .row { display: flex; gap: 8px; }
     .row > * { flex: 1; }
+    .actions button { width: auto; margin-right: 4px; }
+    .muted { color: #666; font-size: 0.9em; }
   </style>
 </head>
 <body>
   <h1>共有 収支管理アプリ</h1>
 
-  <h2>新規入力</h2>
+  <h2>新規入力 / 編集</h2>
   <label>氏名</label>
   <select id="nameSelect"></select>
 
@@ -30,7 +32,12 @@
   <label>日付</label>
   <input id="date" type="date" />
 
-  <button onclick="addEntry()">追加</button>
+  <div class="row">
+    <button id="addBtn" onclick="addEntry()">追加</button>
+    <button id="updateBtn" onclick="updateEntry()" style="display:none;">更新</button>
+    <button id="cancelBtn" onclick="cancelEdit()" style="display:none;">キャンセル</button>
+  </div>
+  <p id="editHint" class="muted" style="display:none;">※ 下の一覧の「編集」を押すと、このフォームで修正できます</p>
 
   <h2>氏名の追加・編集</h2>
   <div class="row">
@@ -41,7 +48,7 @@
   <h2>収支一覧</h2>
   <table>
     <thead>
-      <tr><th>氏名</th><th>金額</th><th>日付</th></tr>
+      <tr><th>氏名</th><th>金額</th><th>日付</th><th>操作</th></tr>
     </thead>
     <tbody id="entries"></tbody>
   </table>
@@ -55,15 +62,16 @@
   </table>
 
   <script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyCzGHaax123Mtu8MhQ7a7DBsFklXdGcDYg",
-    authDomain: "sharebalance-12eed.firebaseapp.com",
-    projectId: "sharebalance-12eed",
-    storageBucket: "sharebalance-12eed.firebasestorage.app",
-    messagingSenderId: "778895785853",
-    appId: "1:778895785853:web:7efaf0754f283e6a015614",
-    measurementId: "G-MDCJMN4DXZ"
-  };
+    // Firebase 設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyCzGHaax123Mtu8MhQ7a7DBsFklXdGcDYg",
+      authDomain: "sharebalance-12eed.firebaseapp.com",
+      projectId: "sharebalance-12eed",
+      storageBucket: "sharebalance-12eed.firebasestorage.app",
+      messagingSenderId: "778895785853",
+      appId: "1:778895785853:web:7efaf0754f283e6a015614",
+      measurementId: "G-MDCJMN4DXZ"
+    };
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
@@ -71,6 +79,13 @@
     const nameSelect = document.getElementById('nameSelect');
     const entriesTbody = document.getElementById('entries');
     const totalsTbody = document.getElementById('totals');
+
+    const addBtn = document.getElementById('addBtn');
+    const updateBtn = document.getElementById('updateBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const editHint = document.getElementById('editHint');
+
+    let editingId = null; // 現在編集中のドキュメントID
 
     // 氏名一覧の取得
     db.collection('names').onSnapshot(snapshot => {
@@ -91,7 +106,15 @@
       snapshot.forEach(doc => {
         const d = doc.data();
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${d.name}</td><td>${d.amount}</td><td>${d.date}</td>`;
+        tr.innerHTML = `
+          <td>${d.name}</td>
+          <td>${d.amount}</td>
+          <td>${d.date}</td>
+          <td class="actions">
+            <button onclick="startEdit('${doc.id}', '${d.name}', ${d.amount}, '${d.date}')">編集</button>
+            <button onclick="deleteEntry('${doc.id}')">削除</button>
+          </td>
+        `;
         entriesTbody.appendChild(tr);
 
         if (!totals[d.name]) totals[d.name] = 0;
@@ -121,8 +144,58 @@
       if (!name || !amount || !date) return alert('すべて入力してください');
 
       db.collection('entries').add({ name, amount, date });
+      clearForm();
+    }
+
+    // ===== 編集・削除 追加機能 =====
+
+    // 編集開始：フォームに値をセット
+    function startEdit(id, name, amount, date) {
+      editingId = id;
+      nameSelect.value = name;
+      document.getElementById('amount').value = amount;
+      document.getElementById('date').value = date;
+
+      addBtn.style.display = 'none';
+      updateBtn.style.display = 'block';
+      cancelBtn.style.display = 'block';
+      editHint.style.display = 'block';
+    }
+
+    // 更新処理
+    function updateEntry() {
+      if (!editingId) return;
+      const name = nameSelect.value;
+      const amount = Number(document.getElementById('amount').value);
+      const date = document.getElementById('date').value;
+      if (!name || !amount || !date) return alert('すべて入力してください');
+
+      db.collection('entries').doc(editingId).update({ name, amount, date })
+        .then(() => {
+          clearForm();
+        });
+    }
+
+    // 削除処理
+    function deleteEntry(id) {
+      if (!confirm('この収支を削除しますか？')) return;
+      db.collection('entries').doc(id).delete();
+      if (editingId === id) clearForm();
+    }
+
+    // 編集キャンセル／フォーム初期化
+    function cancelEdit() {
+      clearForm();
+    }
+
+    function clearForm() {
+      editingId = null;
       document.getElementById('amount').value = '';
       document.getElementById('date').value = '';
+      addBtn.style.display = 'block';
+      updateBtn.style.display = 'none';
+      cancelBtn.style.display = 'none';
+      editHint.style.display = 'none';
     }
   </script>
 </body>
