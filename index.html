@@ -2,98 +2,250 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>収支管理（共有）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a2818" />
+  <title>ShareBalance — Poker Ledger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <style>
-    body { font-family: system-ui, -apple-system, BlinkMacSystemFont; padding: 12px; }
-    h1 { font-size: 1.2rem; }
-    label { display: block; margin-top: 8px; }
-    input, select, button { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-    .row { display: flex; gap: 8px; }
-    .row > * { flex: 1; }
-    .actions button { width: auto; margin-right: 4px; }
-    .muted { color: #666; font-size: 0.9em; }
-    .hidden { display: none; }
-    #gate { max-width: 360px; margin: 48px auto; }
-    #gateError { color: #b00; margin-top: 8px; }
-    .session-header td { background: #f5f5f5; font-weight: bold; }
-    .session-subtotal td { font-weight: bold; }
-    .session-subtotal.ok td { background: #e6ffe6; color: #060; }
-    .session-subtotal.bad td { background: #ffe0e0; color: #b00; }
-    #settleWarning { color: #b00; }
+    :root {
+      --bg: #0a2818;
+      --bg-dark: #061a0e;
+      --surface: #123a24;
+      --surface-light: #1b4e33;
+      --accent: #d4af37;
+      --accent-dim: #a88526;
+      --text: #f0e6d2;
+      --text-dim: #9a8e72;
+      --win: #5fd38a;
+      --lose: #ef6b6b;
+      --border: rgba(212, 175, 55, 0.22);
+      --border-strong: rgba(212, 175, 55, 0.55);
+      --shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: radial-gradient(ellipse at top, var(--surface) 0%, var(--bg) 60%, var(--bg-dark) 100%);
+      background-attachment: fixed;
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 16px;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    body { padding: 16px 12px 48px; max-width: 560px; margin: 0 auto; }
+
+    h1.brand {
+      font-family: 'Cinzel', serif; font-weight: 700;
+      color: var(--accent); text-align: center;
+      letter-spacing: 0.15em; font-size: 1.6rem;
+      margin: 8px 0 20px; text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+    h1.brand .sub { display: block; font-size: 0.55rem; letter-spacing: 0.4em; color: var(--text-dim); margin-top: 4px; font-weight: 500; }
+    h2 {
+      font-family: 'Cinzel', serif; color: var(--accent);
+      font-size: 0.95rem; letter-spacing: 0.2em; text-transform: uppercase;
+      margin: 0 0 10px; font-weight: 500;
+    }
+
+    .card {
+      background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .muted { color: var(--text-dim); font-size: 0.82rem; line-height: 1.5; }
+    .hidden { display: none !important; }
+
+    label { display: block; margin: 12px 0 4px; color: var(--text-dim); font-size: 0.78rem; letter-spacing: 0.1em; text-transform: uppercase; }
+    input[type="text"], input[type="password"], input[type="number"], input[type="date"], select {
+      width: 100%; padding: 12px 14px; font-size: 16px;
+      background: rgba(0,0,0,0.35); color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px;
+      font-family: inherit;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23d4af37' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 40px; }
+
+    button {
+      font-family: inherit; font-size: 15px; font-weight: 600;
+      padding: 12px 16px; border-radius: 10px; border: none;
+      cursor: pointer; letter-spacing: 0.03em;
+      transition: transform 0.08s, filter 0.15s;
+    }
+    button:active { transform: scale(0.97); }
+    .btn-primary { background: linear-gradient(180deg, var(--accent), var(--accent-dim)); color: #1a1408; width: 100%; font-weight: 700; padding: 14px; }
+    .btn-ghost { background: rgba(212,175,55,0.08); color: var(--accent); border: 1px solid var(--border); }
+    .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+    .btn-row > button { flex: 1; }
+
+    /* 合言葉ゲート */
+    #gate { padding-top: 60px; }
+    #gate .card { text-align: center; padding: 32px 20px; }
+    #gateError { color: var(--lose); margin-top: 12px; font-size: 0.9rem; }
+
+    /* 金額コントロール */
+    .sign-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+    .sign-btn {
+      flex: 1; padding: 16px 0; font-size: 15px; font-weight: 700;
+      background: rgba(0,0,0,0.3); color: var(--text-dim);
+      border: 2px solid transparent; border-radius: 12px;
+      letter-spacing: 0.1em;
+    }
+    .sign-btn.active[data-sign="1"] { background: rgba(95, 211, 138, 0.15); color: var(--win); border-color: var(--win); }
+    .sign-btn.active[data-sign="-1"] { background: rgba(239, 107, 107, 0.15); color: var(--lose); border-color: var(--lose); }
+    .amount-display {
+      text-align: center; padding: 20px 0 16px;
+      font-family: 'Inter', sans-serif; font-weight: 700;
+      font-size: 2.4rem; letter-spacing: 0.02em;
+      font-variant-numeric: tabular-nums;
+      background: rgba(0,0,0,0.28); border-radius: 12px;
+      border: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .amount-display.positive { color: var(--win); }
+    .amount-display.negative { color: var(--lose); }
+    .amount-display.zero { color: var(--text-dim); }
+
+    .chip-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .chip {
+      padding: 12px 0; font-size: 14px; font-weight: 600;
+      background: rgba(212,175,55,0.08); color: var(--accent);
+      border: 1px solid var(--border); border-radius: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+    .chip.minus { color: var(--text); background: rgba(0,0,0,0.25); }
+    .chip-reset { margin-top: 10px; width: 100%; padding: 10px; background: transparent; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; font-size: 13px; }
+
+    /* 名前追加 */
+    .name-add { display: flex; gap: 8px; }
+    .name-add input { flex: 1; }
+    .name-add button { flex-shrink: 0; padding: 0 20px; background: rgba(212,175,55,0.12); color: var(--accent); border: 1px solid var(--border); }
+
+    /* セッションカード */
+    .session { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+    .session-head { background: rgba(0,0,0,0.35); padding: 10px 14px; font-size: 0.85rem; font-weight: 600; color: var(--accent); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .session-head .date { font-variant-numeric: tabular-nums; }
+    .session-head .venue { color: var(--text-dim); font-weight: 400; font-size: 0.78rem; text-align: right; flex: 1; }
+    .entry-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid rgba(212,175,55,0.08); }
+    .entry-row:first-of-type { border-top: none; }
+    .entry-name { flex: 1; font-weight: 500; }
+    .entry-amount { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 72px; text-align: right; }
+    .entry-amount.positive { color: var(--win); }
+    .entry-amount.negative { color: var(--lose); }
+    .entry-actions { display: flex; gap: 6px; }
+    .icon-btn { padding: 6px 10px; font-size: 12px; background: rgba(0,0,0,0.3); color: var(--text-dim); border: 1px solid var(--border); border-radius: 7px; }
+    .icon-btn.del { color: var(--lose); }
+    .session-foot { padding: 10px 14px; font-size: 0.82rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+    .session-foot.ok { background: rgba(95,211,138,0.08); color: var(--win); }
+    .session-foot.bad { background: rgba(239,107,107,0.1); color: var(--lose); }
+
+    /* 合計・精算リスト */
+    .ranking { display: flex; flex-direction: column; gap: 6px; }
+    .rank-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 10px; }
+    .rank-pos { font-family: 'Cinzel', serif; color: var(--accent); font-weight: 700; min-width: 24px; text-align: center; }
+    .rank-name { flex: 1; font-weight: 500; }
+    .rank-amt { font-variant-numeric: tabular-nums; font-weight: 700; }
+    .rank-amt.positive { color: var(--win); }
+    .rank-amt.negative { color: var(--lose); }
+
+    .settle-row { display: flex; align-items: center; gap: 10px; padding: 12px; background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px; }
+    .settle-from { color: var(--lose); font-weight: 600; flex: 1; text-align: right; }
+    .settle-arrow { color: var(--accent); }
+    .settle-to { color: var(--win); font-weight: 600; flex: 1; }
+    .settle-amt { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); min-width: 76px; text-align: right; }
+    .settle-empty { text-align: center; padding: 20px; color: var(--text-dim); font-style: italic; }
+    #settleWarning { color: var(--lose); margin-top: 10px; font-size: 0.85rem; }
   </style>
 </head>
 <body>
 
   <div id="gate">
-    <h1>合言葉を入力</h1>
-    <p class="muted">このアプリはメンバー限定です。合言葉を共有メンバーから受け取ってください。</p>
-    <input id="passcodeInput" type="password" placeholder="合言葉" autocomplete="off" />
-    <button id="unlockBtn">入る</button>
-    <p id="gateError" class="hidden"></p>
+    <h1 class="brand">ShareBalance<span class="sub">Poker Ledger</span></h1>
+    <div class="card">
+      <h2>合言葉</h2>
+      <p class="muted">メンバー限定です。合言葉を入力してください。</p>
+      <input id="passcodeInput" type="password" placeholder="合言葉" autocomplete="off" />
+      <button id="unlockBtn" class="btn-primary" style="margin-top:14px;">テーブルに入る</button>
+      <p id="gateError" class="hidden"></p>
+    </div>
   </div>
 
   <div id="app" class="hidden">
-    <h1>共有 収支管理アプリ</h1>
+    <h1 class="brand">ShareBalance<span class="sub">Poker Ledger</span></h1>
 
-    <h2>新規入力 / 編集</h2>
-    <label>氏名</label>
-    <select id="nameSelect"></select>
+    <div class="card">
+      <h2>収支を入力</h2>
 
-    <label>金額（+ / -）</label>
-    <input id="amount" type="number" placeholder="例: 1000 / -500" />
+      <div class="sign-toggle">
+        <button class="sign-btn active" data-sign="1">勝ち ＋</button>
+        <button class="sign-btn" data-sign="-1">負け −</button>
+      </div>
 
-    <label>日付</label>
-    <input id="date" type="date" />
+      <div id="amountDisplay" class="amount-display zero">¥0</div>
 
-    <label>会場</label>
-    <input id="venue" list="venueList" placeholder="例: ○○店 NLH 100/200" autocomplete="off" />
-    <datalist id="venueList"></datalist>
+      <div class="chip-grid">
+        <button class="chip" data-delta="10">+10</button>
+        <button class="chip" data-delta="100">+100</button>
+        <button class="chip" data-delta="1000">+1K</button>
+        <button class="chip" data-delta="10000">+10K</button>
+        <button class="chip minus" data-delta="-10">−10</button>
+        <button class="chip minus" data-delta="-100">−100</button>
+        <button class="chip minus" data-delta="-1000">−1K</button>
+        <button class="chip minus" data-delta="-10000">−10K</button>
+      </div>
+      <button id="amountReset" class="chip-reset">金額をリセット</button>
 
-    <div class="row">
-      <button id="addBtn">追加</button>
-      <button id="updateBtn" class="hidden">更新</button>
-      <button id="cancelBtn" class="hidden">キャンセル</button>
+      <label>プレイヤー</label>
+      <select id="nameSelect"></select>
+
+      <label>日付</label>
+      <input id="date" type="date" />
+
+      <label>会場</label>
+      <input id="venue" type="text" list="venueList" placeholder="例: ○○店 NLH 100/200" autocomplete="off" />
+      <datalist id="venueList"></datalist>
+
+      <div class="btn-row">
+        <button id="addBtn" class="btn-primary">追加</button>
+        <button id="updateBtn" class="btn-primary hidden">更新</button>
+        <button id="cancelBtn" class="btn-ghost hidden">キャンセル</button>
+      </div>
+      <p id="editHint" class="muted hidden" style="margin-top:10px;">※ 下のセッションの「編集」をタップするとここで修正できます</p>
     </div>
-    <p id="editHint" class="muted hidden">※ 下の一覧の「編集」を押すと、このフォームで修正できます</p>
 
-    <h2>氏名の追加</h2>
-    <div class="row">
-      <input id="newName" placeholder="新しい氏名" />
-      <button id="addNameBtn">追加</button>
+    <div class="card">
+      <h2>プレイヤー追加</h2>
+      <div class="name-add">
+        <input id="newName" type="text" placeholder="新しい名前" />
+        <button id="addNameBtn">追加</button>
+      </div>
     </div>
 
-    <h2>収支一覧（セッション別）</h2>
-    <p class="muted">同じ「日付 × 会場」を 1 セッションとしてまとめ、小計を表示します。±0 でないセッションは赤く警告します（入力漏れ/誤記の可能性）。</p>
-    <table>
-      <thead>
-        <tr><th>氏名</th><th>金額</th><th>日付</th><th>会場</th><th>操作</th></tr>
-      </thead>
-      <tbody id="entries"></tbody>
-    </table>
+    <div class="card">
+      <h2>セッション</h2>
+      <p class="muted" style="margin-bottom:12px;">同じ日付 × 会場を 1 セッションとしてまとめます。小計が ±0 にならないセッションは赤く警告します。</p>
+      <div id="entries"></div>
+    </div>
 
-    <h2>合計（氏名ごと・勝ち順）</h2>
-    <table>
-      <thead>
-        <tr><th>氏名</th><th>合計</th></tr>
-      </thead>
-      <tbody id="totals"></tbody>
-    </table>
+    <div class="card">
+      <h2>ランキング</h2>
+      <div id="totals" class="ranking"></div>
+    </div>
 
-    <h2>精算</h2>
-    <p class="muted">「誰が誰にいくら払えば全員の収支が 0 になるか」を少ない回数で提案します。</p>
-    <table>
-      <thead>
-        <tr><th>支払う人</th><th></th><th>受け取る人</th><th>金額</th></tr>
-      </thead>
-      <tbody id="settlement"></tbody>
-    </table>
-    <p id="settleWarning" class="hidden"></p>
+    <div class="card">
+      <h2>精算</h2>
+      <p class="muted" style="margin-bottom:12px;">全員を ±0 にする送金リストを少ない回数で提案します。</p>
+      <div id="settlement"></div>
+      <p id="settleWarning" class="hidden"></p>
+    </div>
   </div>
 
   <script>
@@ -120,12 +272,13 @@
     const gateError = document.getElementById('gateError');
 
     const nameSelect = document.getElementById('nameSelect');
-    const entriesTbody = document.getElementById('entries');
-    const totalsTbody = document.getElementById('totals');
-    const settlementTbody = document.getElementById('settlement');
+    const entriesEl = document.getElementById('entries');
+    const totalsEl = document.getElementById('totals');
+    const settlementEl = document.getElementById('settlement');
     const settleWarning = document.getElementById('settleWarning');
     const venueInput = document.getElementById('venue');
     const venueList = document.getElementById('venueList');
+    const dateInput = document.getElementById('date');
 
     const addBtn = document.getElementById('addBtn');
     const updateBtn = document.getElementById('updateBtn');
@@ -133,40 +286,35 @@
     const editHint = document.getElementById('editHint');
     const addNameBtn = document.getElementById('addNameBtn');
 
+    const signBtns = document.querySelectorAll('.sign-btn');
+    const amountDisplay = document.getElementById('amountDisplay');
+    const resetBtn = document.getElementById('amountReset');
+
     let editingId = null;
     let subscribed = false;
+    let currentSign = 1;
+    let currentMag = 0;
 
+    // === ユーティリティ ===
     async function sha256Hex(text) {
       const buf = new TextEncoder().encode(text);
       const hash = await crypto.subtle.digest('SHA-256', buf);
-      return Array.from(new Uint8Array(hash))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
+    function fmt(n) { return n.toLocaleString('ja-JP'); }
+    function signed(n) { return (n > 0 ? '+' : '') + fmt(n); }
 
-    function showError(msg) {
-      gateError.textContent = msg;
-      gateError.classList.remove('hidden');
-    }
+    // === 合言葉ゲート ===
+    function showError(msg) { gateError.textContent = msg; gateError.classList.remove('hidden'); }
 
     async function tryUnlock() {
       gateError.classList.add('hidden');
       const input = passcodeInput.value;
       if (!input) { showError('合言葉を入力してください'); return; }
-
       const hex = await sha256Hex(input);
-      if (hex !== PASSCODE_SHA256) {
-        showError('合言葉が違います');
-        return;
-      }
-
-      try {
-        await auth.signInAnonymously();
-      } catch (e) {
-        showError('認証に失敗しました: ' + e.message);
-        return;
-      }
-
+      if (hex !== PASSCODE_SHA256) { showError('合言葉が違います'); return; }
+      try { await auth.signInAnonymously(); }
+      catch (e) { showError('認証に失敗しました: ' + e.message); return; }
       sessionStorage.setItem('sb_unlocked', '1');
       enterApp();
     }
@@ -178,28 +326,50 @@
         subscribed = true;
         subscribe();
         setDateDefault();
+        updateAmountDisplay();
       }
     }
 
     unlockBtn.addEventListener('click', tryUnlock);
-    passcodeInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') tryUnlock();
+    passcodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+    auth.onAuthStateChanged(user => {
+      if (user && sessionStorage.getItem('sb_unlocked') === '1') enterApp();
     });
 
-    auth.onAuthStateChanged(user => {
-      if (user && sessionStorage.getItem('sb_unlocked') === '1') {
-        enterApp();
-      }
+    // === 金額コントロール ===
+    function updateAmountDisplay() {
+      const val = currentSign * currentMag;
+      amountDisplay.textContent = (val === 0 ? '¥0' : (val > 0 ? '+¥' : '−¥') + fmt(Math.abs(val)));
+      amountDisplay.classList.toggle('positive', val > 0);
+      amountDisplay.classList.toggle('negative', val < 0);
+      amountDisplay.classList.toggle('zero', val === 0);
+    }
+
+    function setSign(sign) {
+      currentSign = sign;
+      signBtns.forEach(b => b.classList.toggle('active', Number(b.dataset.sign) === sign));
+      updateAmountDisplay();
+    }
+
+    signBtns.forEach(btn => {
+      btn.addEventListener('click', () => setSign(Number(btn.dataset.sign)));
     });
+
+    document.querySelectorAll('.chip[data-delta]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentMag = Math.max(0, currentMag + Number(btn.dataset.delta));
+        updateAmountDisplay();
+      });
+    });
+
+    resetBtn.addEventListener('click', () => { currentMag = 0; updateAmountDisplay(); });
 
     function setDateDefault() {
       const d = new Date();
-      const iso = d.getFullYear() + '-' +
-        String(d.getMonth() + 1).padStart(2, '0') + '-' +
-        String(d.getDate()).padStart(2, '0');
-      document.getElementById('date').value = iso;
+      dateInput.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
 
+    // === Firestore 購読 & 描画 ===
     function subscribe() {
       db.collection('names').onSnapshot(snapshot => {
         nameSelect.replaceChildren();
@@ -219,6 +389,7 @@
     }
 
     function render(entries) {
+      // 会場 datalist
       const venues = Array.from(new Set(entries.map(e => e.venue).filter(v => v)));
       venueList.replaceChildren();
       venues.sort().forEach(v => {
@@ -227,96 +398,101 @@
         venueList.appendChild(opt);
       });
 
+      // セッション別グルーピング
       const groupMap = new Map();
       entries.forEach(e => {
-        const venue = e.venue || '';
-        const key = e.date + '|' + venue;
-        if (!groupMap.has(key)) {
-          groupMap.set(key, { date: e.date, venue, items: [], subtotal: 0 });
-        }
+        const key = e.date + '|' + (e.venue || '');
+        if (!groupMap.has(key)) groupMap.set(key, { date: e.date, venue: e.venue || '', items: [], subtotal: 0 });
         const g = groupMap.get(key);
         g.items.push(e);
         g.subtotal += Number(e.amount);
       });
-
       const groups = Array.from(groupMap.values()).sort((a, b) => {
         if (a.date !== b.date) return a.date < b.date ? 1 : -1;
         return a.venue < b.venue ? -1 : 1;
       });
 
-      entriesTbody.replaceChildren();
+      entriesEl.replaceChildren();
+      if (groups.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'muted';
+        p.style.textAlign = 'center'; p.style.padding = '12px';
+        p.textContent = 'まだエントリがありません';
+        entriesEl.appendChild(p);
+      }
+
       groups.forEach(g => {
-        const headerTr = document.createElement('tr');
-        headerTr.className = 'session-header';
-        const headerTd = document.createElement('td');
-        headerTd.colSpan = 5;
-        headerTd.textContent = g.date + '   ' + (g.venue || '(会場未設定)');
-        headerTr.appendChild(headerTd);
-        entriesTbody.appendChild(headerTr);
+        const card = document.createElement('div');
+        card.className = 'session';
+
+        const head = document.createElement('div');
+        head.className = 'session-head';
+        const dateEl = document.createElement('span'); dateEl.className = 'date'; dateEl.textContent = g.date;
+        const venueEl = document.createElement('span'); venueEl.className = 'venue'; venueEl.textContent = g.venue || '(会場未設定)';
+        head.append(dateEl, venueEl);
+        card.appendChild(head);
 
         g.items.forEach(e => {
-          const tr = document.createElement('tr');
-          const tdName = document.createElement('td'); tdName.textContent = e.name;
-          const tdAmount = document.createElement('td'); tdAmount.textContent = e.amount;
-          const tdDate = document.createElement('td'); tdDate.textContent = e.date;
-          const tdVenue = document.createElement('td'); tdVenue.textContent = e.venue || '';
+          const row = document.createElement('div');
+          row.className = 'entry-row';
+          const nameEl = document.createElement('span'); nameEl.className = 'entry-name'; nameEl.textContent = e.name;
+          const amtEl = document.createElement('span');
+          const amt = Number(e.amount);
+          amtEl.className = 'entry-amount ' + (amt > 0 ? 'positive' : amt < 0 ? 'negative' : '');
+          amtEl.textContent = signed(amt);
 
-          const tdActions = document.createElement('td');
-          tdActions.className = 'actions';
-          const editBtn = document.createElement('button');
-          editBtn.textContent = '編集';
-          editBtn.addEventListener('click', () => {
-            startEdit(e.id, e.name, e.amount, e.date, e.venue || '');
-          });
-          const delBtn = document.createElement('button');
-          delBtn.textContent = '削除';
+          const actions = document.createElement('div'); actions.className = 'entry-actions';
+          const editBtn = document.createElement('button'); editBtn.className = 'icon-btn'; editBtn.textContent = '編集';
+          editBtn.addEventListener('click', () => startEdit(e.id, e.name, amt, e.date, e.venue || ''));
+          const delBtn = document.createElement('button'); delBtn.className = 'icon-btn del'; delBtn.textContent = '削除';
           delBtn.addEventListener('click', () => deleteEntry(e.id));
-          tdActions.append(editBtn, delBtn);
+          actions.append(editBtn, delBtn);
 
-          tr.append(tdName, tdAmount, tdDate, tdVenue, tdActions);
-          entriesTbody.appendChild(tr);
+          row.append(nameEl, amtEl, actions);
+          card.appendChild(row);
         });
 
-        const subTr = document.createElement('tr');
-        subTr.className = 'session-subtotal ' + (g.subtotal === 0 ? 'ok' : 'bad');
-        const subTd = document.createElement('td');
-        subTd.colSpan = 5;
-        subTd.textContent = g.subtotal === 0
-          ? '小計: ±0 OK'
-          : '小計: ' + g.subtotal + '（±0 になっていません）';
-        subTr.appendChild(subTd);
-        entriesTbody.appendChild(subTr);
+        const foot = document.createElement('div');
+        foot.className = 'session-foot ' + (g.subtotal === 0 ? 'ok' : 'bad');
+        foot.textContent = g.subtotal === 0 ? '小計 ±0  ✓' : '小計 ' + signed(g.subtotal) + ' ⚠ 要確認';
+        card.appendChild(foot);
+
+        entriesEl.appendChild(card);
       });
 
+      // 合計（降順）
       const totals = {};
-      entries.forEach(e => {
-        totals[e.name] = (totals[e.name] || 0) + Number(e.amount);
-      });
+      entries.forEach(e => { totals[e.name] = (totals[e.name] || 0) + Number(e.amount); });
       const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
-      totalsTbody.replaceChildren();
-      sorted.forEach(([name, amt]) => {
-        const tr = document.createElement('tr');
-        const tdName = document.createElement('td'); tdName.textContent = name;
-        const tdAmt = document.createElement('td'); tdAmt.textContent = amt;
-        tr.append(tdName, tdAmt);
-        totalsTbody.appendChild(tr);
+      totalsEl.replaceChildren();
+      if (sorted.length === 0) {
+        const p = document.createElement('p'); p.className = 'muted'; p.style.textAlign = 'center'; p.textContent = '（データなし）';
+        totalsEl.appendChild(p);
+      }
+      sorted.forEach(([name, amt], i) => {
+        const row = document.createElement('div'); row.className = 'rank-row';
+        const pos = document.createElement('span'); pos.className = 'rank-pos'; pos.textContent = (i + 1);
+        const nameEl = document.createElement('span'); nameEl.className = 'rank-name'; nameEl.textContent = name;
+        const amtEl = document.createElement('span'); amtEl.className = 'rank-amt ' + (amt > 0 ? 'positive' : amt < 0 ? 'negative' : '');
+        amtEl.textContent = signed(amt);
+        row.append(pos, nameEl, amtEl);
+        totalsEl.appendChild(row);
       });
 
       renderSettlement(totals);
     }
 
     function renderSettlement(totals) {
-      settlementTbody.replaceChildren();
+      settlementEl.replaceChildren();
       settleWarning.classList.add('hidden');
 
       const sum = Object.values(totals).reduce((s, v) => s + v, 0);
       if (sum !== 0) {
-        settleWarning.textContent = '⚠ 全体合計が ' + sum + ' で ±0 ではありません。セッション小計の赤い行を確認してください。';
+        settleWarning.textContent = '⚠ 全体合計が ' + signed(sum) + ' で ±0 ではありません。セッション小計の赤い行を確認してください。';
         settleWarning.classList.remove('hidden');
       }
 
-      const creditors = [];
-      const debtors = [];
+      const creditors = [], debtors = [];
       Object.entries(totals).forEach(([name, amt]) => {
         if (amt > 0) creditors.push({ name, amt });
         else if (amt < 0) debtors.push({ name, amt: -amt });
@@ -324,16 +500,17 @@
       creditors.sort((a, b) => b.amt - a.amt);
       debtors.sort((a, b) => b.amt - a.amt);
 
-      let i = 0, j = 0;
+      let i = 0, j = 0, rowCount = 0;
       while (i < debtors.length && j < creditors.length) {
         const pay = Math.min(debtors[i].amt, creditors[j].amt);
-        const tr = document.createElement('tr');
-        const tdFrom = document.createElement('td'); tdFrom.textContent = debtors[i].name;
-        const tdArrow = document.createElement('td'); tdArrow.textContent = '→';
-        const tdTo = document.createElement('td'); tdTo.textContent = creditors[j].name;
-        const tdAmt = document.createElement('td'); tdAmt.textContent = pay;
-        tr.append(tdFrom, tdArrow, tdTo, tdAmt);
-        settlementTbody.appendChild(tr);
+        const row = document.createElement('div'); row.className = 'settle-row';
+        const fromEl = document.createElement('span'); fromEl.className = 'settle-from'; fromEl.textContent = debtors[i].name;
+        const arrow = document.createElement('span'); arrow.className = 'settle-arrow'; arrow.textContent = '→';
+        const toEl = document.createElement('span'); toEl.className = 'settle-to'; toEl.textContent = creditors[j].name;
+        const amtEl = document.createElement('span'); amtEl.className = 'settle-amt'; amtEl.textContent = '¥' + fmt(pay);
+        row.append(fromEl, arrow, toEl, amtEl);
+        settlementEl.appendChild(row);
+        rowCount++;
 
         debtors[i].amt -= pay;
         creditors[j].amt -= pay;
@@ -341,17 +518,13 @@
         if (creditors[j].amt === 0) j++;
       }
 
-      if (settlementTbody.children.length === 0) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 4;
-        td.textContent = '精算不要（全員 ±0）';
-        td.style.color = '#060';
-        tr.appendChild(td);
-        settlementTbody.appendChild(tr);
+      if (rowCount === 0) {
+        const p = document.createElement('p'); p.className = 'settle-empty'; p.textContent = '精算不要（全員 ±0）';
+        settlementEl.appendChild(p);
       }
     }
 
+    // === 操作 ===
     function addName() {
       const name = document.getElementById('newName').value.trim();
       if (!name) return;
@@ -361,13 +534,12 @@
 
     function addEntry() {
       const name = nameSelect.value;
-      const amountStr = document.getElementById('amount').value;
-      const amount = Number(amountStr);
-      const date = document.getElementById('date').value;
+      const date = dateInput.value;
       const venue = venueInput.value.trim();
-      if (!name || amountStr === '' || isNaN(amount) || !date) {
-        return alert('氏名・金額・日付を入力してください');
-      }
+      if (!name) return alert('プレイヤーを選択してください');
+      if (!date) return alert('日付を入力してください');
+      if (currentMag === 0) return alert('金額を入力してください');
+      const amount = currentSign * currentMag;
       db.collection('entries').add({ name, amount, date, venue });
       clearForm();
     }
@@ -375,43 +547,41 @@
     function startEdit(id, name, amount, date, venue) {
       editingId = id;
       nameSelect.value = name;
-      document.getElementById('amount').value = amount;
-      document.getElementById('date').value = date;
+      dateInput.value = date;
       venueInput.value = venue || '';
+      if (amount >= 0) { setSign(1); currentMag = amount; }
+      else { setSign(-1); currentMag = -amount; }
+      updateAmountDisplay();
 
       addBtn.classList.add('hidden');
       updateBtn.classList.remove('hidden');
       cancelBtn.classList.remove('hidden');
       editHint.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function updateEntry() {
       if (!editingId) return;
       const name = nameSelect.value;
-      const amountStr = document.getElementById('amount').value;
-      const amount = Number(amountStr);
-      const date = document.getElementById('date').value;
+      const date = dateInput.value;
       const venue = venueInput.value.trim();
-      if (!name || amountStr === '' || isNaN(amount) || !date) {
-        return alert('氏名・金額・日付を入力してください');
-      }
-      db.collection('entries').doc(editingId).update({ name, amount, date, venue })
-        .then(clearForm);
+      if (!name) return alert('プレイヤーを選択してください');
+      if (!date) return alert('日付を入力してください');
+      if (currentMag === 0) return alert('金額を入力してください');
+      const amount = currentSign * currentMag;
+      db.collection('entries').doc(editingId).update({ name, amount, date, venue }).then(clearForm);
     }
 
     function deleteEntry(id) {
-      if (!confirm('この収支を削除しますか？')) return;
+      if (!confirm('このエントリを削除しますか？')) return;
       db.collection('entries').doc(id).delete();
       if (editingId === id) clearForm();
     }
 
-    function cancelEdit() {
-      clearForm();
-    }
-
     function clearForm() {
       editingId = null;
-      document.getElementById('amount').value = '';
+      currentMag = 0;
+      setSign(1);
       venueInput.value = '';
       setDateDefault();
       addBtn.classList.remove('hidden');
@@ -422,7 +592,7 @@
 
     addBtn.addEventListener('click', addEntry);
     updateBtn.addEventListener('click', updateEntry);
-    cancelBtn.addEventListener('click', cancelEdit);
+    cancelBtn.addEventListener('click', clearForm);
     addNameBtn.addEventListener('click', addName);
   </script>
 </body>
