@@ -260,6 +260,7 @@
     };
 
     const PASSCODE_SHA256 = "1ba393b460aa4b3f4de2c37d04b54f0bcb36c9f1f14d31ef5b9814f7bd169cea";
+    const ADMIN_PASSCODE_SHA256 = "75ca28395bfc9ad121e29198a3124a330e4ad2c10463dd7b9bae68f48423fe71";
 
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
@@ -303,6 +304,19 @@
     }
     function fmt(n) { return n.toLocaleString('ja-JP'); }
     function signed(n) { return (n > 0 ? '+' : '') + fmt(n); }
+
+    async function requireAdmin() {
+      if (sessionStorage.getItem('sb_admin') === '1') return true;
+      const input = prompt('管理者パスワードを入力してください');
+      if (input === null) return false;
+      const hex = await sha256Hex(input);
+      if (hex !== ADMIN_PASSCODE_SHA256) {
+        alert('管理者パスワードが違います');
+        return false;
+      }
+      sessionStorage.setItem('sb_admin', '1');
+      return true;
+    }
 
     // === 合言葉ゲート ===
     function showError(msg) { gateError.textContent = msg; gateError.classList.remove('hidden'); }
@@ -443,9 +457,15 @@
 
           const actions = document.createElement('div'); actions.className = 'entry-actions';
           const editBtn = document.createElement('button'); editBtn.className = 'icon-btn'; editBtn.textContent = '編集';
-          editBtn.addEventListener('click', () => startEdit(e.id, e.name, amt, e.date, e.venue || ''));
+          editBtn.addEventListener('click', async () => {
+            if (!(await requireAdmin())) return;
+            startEdit(e.id, e.name, amt, e.date, e.venue || '');
+          });
           const delBtn = document.createElement('button'); delBtn.className = 'icon-btn del'; delBtn.textContent = '削除';
-          delBtn.addEventListener('click', () => deleteEntry(e.id));
+          delBtn.addEventListener('click', async () => {
+            if (!(await requireAdmin())) return;
+            deleteEntry(e.id);
+          });
           actions.append(editBtn, delBtn);
 
           row.append(nameEl, amtEl, actions);
