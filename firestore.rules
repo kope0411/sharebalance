@@ -1,0 +1,49 @@
+rules_version = '2';
+
+// sharebalance Firestore セキュリティルール
+// - 匿名認証を経たユーザーのみ read/write を許可
+// - 合言葉ゲートはクライアント側(index.html)で実施
+// - 氏名は 1〜50 文字、金額は有限な数値、日付は YYYY-MM-DD に制限
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    function validName(s) {
+      return s is string && s.size() >= 1 && s.size() <= 50;
+    }
+
+    function validAmount(n) {
+      return n is number && n > -1000000000 && n < 1000000000;
+    }
+
+    function validDate(s) {
+      return s is string && s.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    match /names/{doc} {
+      allow read: if isAuthed();
+      allow create, update: if isAuthed()
+        && request.resource.data.keys().hasOnly(['name'])
+        && validName(request.resource.data.name);
+      allow delete: if isAuthed();
+    }
+
+    match /entries/{doc} {
+      allow read: if isAuthed();
+      allow create, update: if isAuthed()
+        && request.resource.data.keys().hasOnly(['name', 'amount', 'date'])
+        && validName(request.resource.data.name)
+        && validAmount(request.resource.data.amount)
+        && validDate(request.resource.data.date);
+      allow delete: if isAuthed();
+    }
+
+    // それ以外はすべて拒否
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

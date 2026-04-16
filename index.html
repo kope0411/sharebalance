@@ -5,64 +5,79 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>収支管理（共有）</title>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <style>
     body { font-family: system-ui, -apple-system, BlinkMacSystemFont; padding: 12px; }
     h1 { font-size: 1.2rem; }
     label { display: block; margin-top: 8px; }
-    input, select, button { width: 100%; padding: 8px; margin-top: 4px; }
+    input, select, button { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
     .row { display: flex; gap: 8px; }
     .row > * { flex: 1; }
     .actions button { width: auto; margin-right: 4px; }
     .muted { color: #666; font-size: 0.9em; }
+    .hidden { display: none; }
+    #gate { max-width: 360px; margin: 48px auto; }
+    #gateError { color: #b00; margin-top: 8px; }
   </style>
 </head>
 <body>
-  <h1>共有 収支管理アプリ</h1>
 
-  <h2>新規入力 / 編集</h2>
-  <label>氏名</label>
-  <select id="nameSelect"></select>
-
-  <label>金額（+ / -）</label>
-  <input id="amount" type="number" placeholder="例: 1000 / -500" />
-
-  <label>日付</label>
-  <input id="date" type="date" />
-
-  <div class="row">
-    <button id="addBtn" onclick="addEntry()">追加</button>
-    <button id="updateBtn" onclick="updateEntry()" style="display:none;">更新</button>
-    <button id="cancelBtn" onclick="cancelEdit()" style="display:none;">キャンセル</button>
-  </div>
-  <p id="editHint" class="muted" style="display:none;">※ 下の一覧の「編集」を押すと、このフォームで修正できます</p>
-
-  <h2>氏名の追加・編集</h2>
-  <div class="row">
-    <input id="newName" placeholder="新しい氏名" />
-    <button onclick="addName()">追加</button>
+  <div id="gate">
+    <h1>合言葉を入力</h1>
+    <p class="muted">このアプリはメンバー限定です。合言葉を共有メンバーから受け取ってください。</p>
+    <input id="passcodeInput" type="password" placeholder="合言葉" autocomplete="off" />
+    <button id="unlockBtn">入る</button>
+    <p id="gateError" class="hidden"></p>
   </div>
 
-  <h2>収支一覧</h2>
-  <table>
-    <thead>
-      <tr><th>氏名</th><th>金額</th><th>日付</th><th>操作</th></tr>
-    </thead>
-    <tbody id="entries"></tbody>
-  </table>
+  <div id="app" class="hidden">
+    <h1>共有 収支管理アプリ</h1>
 
-  <h2>合計（氏名ごと）</h2>
-  <table>
-    <thead>
-      <tr><th>氏名</th><th>合計</th></tr>
-    </thead>
-    <tbody id="totals"></tbody>
-  </table>
+    <h2>新規入力 / 編集</h2>
+    <label>氏名</label>
+    <select id="nameSelect"></select>
+
+    <label>金額（+ / -）</label>
+    <input id="amount" type="number" placeholder="例: 1000 / -500" />
+
+    <label>日付</label>
+    <input id="date" type="date" />
+
+    <div class="row">
+      <button id="addBtn">追加</button>
+      <button id="updateBtn" class="hidden">更新</button>
+      <button id="cancelBtn" class="hidden">キャンセル</button>
+    </div>
+    <p id="editHint" class="muted hidden">※ 下の一覧の「編集」を押すと、このフォームで修正できます</p>
+
+    <h2>氏名の追加</h2>
+    <div class="row">
+      <input id="newName" placeholder="新しい氏名" />
+      <button id="addNameBtn">追加</button>
+    </div>
+
+    <h2>収支一覧</h2>
+    <table>
+      <thead>
+        <tr><th>氏名</th><th>金額</th><th>日付</th><th>操作</th></tr>
+      </thead>
+      <tbody id="entries"></tbody>
+    </table>
+
+    <h2>合計（氏名ごと）</h2>
+    <table>
+      <thead>
+        <tr><th>氏名</th><th>合計</th></tr>
+      </thead>
+      <tbody id="totals"></tbody>
+    </table>
+  </div>
 
   <script>
-    // Firebase 設定
+    // === Firebase 設定 ===
     const firebaseConfig = {
       apiKey: "AIzaSyCzGHaax123Mtu8MhQ7a7DBsFklXdGcDYg",
       authDomain: "sharebalance-12eed.firebaseapp.com",
@@ -73,65 +88,166 @@
       measurementId: "G-MDCJMN4DXZ"
     };
 
+    // === 合言葉 (SHA-256 ハッシュ) ===
+    // 差し替え手順はリポジトリの README を参照。
+    const PASSCODE_SHA256 = "787e870f0435553a9b58c19ba6bb8a24670fa455cae886adb190e9a5edd8c6c9";
+
     firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
     const db = firebase.firestore();
+
+    // === 要素 ===
+    const gate = document.getElementById('gate');
+    const app = document.getElementById('app');
+    const passcodeInput = document.getElementById('passcodeInput');
+    const unlockBtn = document.getElementById('unlockBtn');
+    const gateError = document.getElementById('gateError');
 
     const nameSelect = document.getElementById('nameSelect');
     const entriesTbody = document.getElementById('entries');
     const totalsTbody = document.getElementById('totals');
-
     const addBtn = document.getElementById('addBtn');
     const updateBtn = document.getElementById('updateBtn');
     const cancelBtn = document.getElementById('cancelBtn');
     const editHint = document.getElementById('editHint');
+    const addNameBtn = document.getElementById('addNameBtn');
 
-    let editingId = null; // 現在編集中のドキュメントID
+    let editingId = null;
+    let subscribed = false;
 
-    // 氏名一覧の取得
-    db.collection('names').onSnapshot(snapshot => {
-      nameSelect.innerHTML = '';
-      snapshot.forEach(doc => {
-        const opt = document.createElement('option');
-        opt.value = doc.data().name;
-        opt.textContent = doc.data().name;
-        nameSelect.appendChild(opt);
-      });
+    // === ユーティリティ ===
+    async function sha256Hex(text) {
+      const buf = new TextEncoder().encode(text);
+      const hash = await crypto.subtle.digest('SHA-256', buf);
+      return Array.from(new Uint8Array(hash))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+
+    function showError(msg) {
+      gateError.textContent = msg;
+      gateError.classList.remove('hidden');
+    }
+
+    // === 合言葉ゲート ===
+    async function tryUnlock() {
+      gateError.classList.add('hidden');
+      const input = passcodeInput.value;
+      if (!input) { showError('合言葉を入力してください'); return; }
+
+      const hex = await sha256Hex(input);
+      if (hex !== PASSCODE_SHA256) {
+        showError('合言葉が違います');
+        return;
+      }
+
+      try {
+        await auth.signInAnonymously();
+      } catch (e) {
+        showError('認証に失敗しました: ' + e.message);
+        return;
+      }
+
+      sessionStorage.setItem('sb_unlocked', '1');
+      enterApp();
+    }
+
+    function enterApp() {
+      gate.classList.add('hidden');
+      app.classList.remove('hidden');
+      if (!subscribed) {
+        subscribed = true;
+        subscribe();
+        setDateDefault();
+      }
+    }
+
+    unlockBtn.addEventListener('click', tryUnlock);
+    passcodeInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') tryUnlock();
     });
 
-    // 収支一覧の取得
-    db.collection('entries').orderBy('date').onSnapshot(snapshot => {
-      entriesTbody.innerHTML = '';
-      const totals = {};
-
-      snapshot.forEach(doc => {
-        const d = doc.data();
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${d.name}</td>
-          <td>${d.amount}</td>
-          <td>${d.date}</td>
-          <td class="actions">
-            <button onclick="startEdit('${doc.id}', '${d.name}', ${d.amount}, '${d.date}')">編集</button>
-            <button onclick="deleteEntry('${doc.id}')">削除</button>
-          </td>
-        `;
-        entriesTbody.appendChild(tr);
-
-        if (!totals[d.name]) totals[d.name] = 0;
-        totals[d.name] += d.amount;
-      });
-
-      // 合計表示
-      totalsTbody.innerHTML = '';
-      Object.keys(totals).forEach(name => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${name}</td><td>${totals[name]}</td>`;
-        totalsTbody.appendChild(tr);
-      });
+    // 既にセッション内でアンロック済みかチェック
+    auth.onAuthStateChanged(user => {
+      if (user && sessionStorage.getItem('sb_unlocked') === '1') {
+        enterApp();
+      }
     });
 
+    // === 初期値 ===
+    function setDateDefault() {
+      const d = new Date();
+      const iso = d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+      document.getElementById('date').value = iso;
+    }
+
+    // === Firestore 購読 ===
+    function subscribe() {
+      db.collection('names').onSnapshot(snapshot => {
+        nameSelect.replaceChildren();
+        snapshot.forEach(doc => {
+          const opt = document.createElement('option');
+          opt.value = doc.data().name;
+          opt.textContent = doc.data().name;
+          nameSelect.appendChild(opt);
+        });
+      });
+
+      db.collection('entries').orderBy('date').onSnapshot(snapshot => {
+        entriesTbody.replaceChildren();
+        const totals = {};
+
+        snapshot.forEach(doc => {
+          const d = doc.data();
+          const tr = document.createElement('tr');
+
+          const tdName = document.createElement('td');
+          tdName.textContent = d.name;
+          const tdAmount = document.createElement('td');
+          tdAmount.textContent = d.amount;
+          const tdDate = document.createElement('td');
+          tdDate.textContent = d.date;
+
+          const tdActions = document.createElement('td');
+          tdActions.className = 'actions';
+
+          const editBtn = document.createElement('button');
+          editBtn.textContent = '編集';
+          editBtn.dataset.id = doc.id;
+          editBtn.addEventListener('click', () => {
+            startEdit(doc.id, d.name, d.amount, d.date);
+          });
+
+          const delBtn = document.createElement('button');
+          delBtn.textContent = '削除';
+          delBtn.dataset.id = doc.id;
+          delBtn.addEventListener('click', () => deleteEntry(doc.id));
+
+          tdActions.append(editBtn, delBtn);
+          tr.append(tdName, tdAmount, tdDate, tdActions);
+          entriesTbody.appendChild(tr);
+
+          totals[d.name] = (totals[d.name] || 0) + Number(d.amount);
+        });
+
+        totalsTbody.replaceChildren();
+        Object.keys(totals).forEach(name => {
+          const tr = document.createElement('tr');
+          const tdName = document.createElement('td');
+          tdName.textContent = name;
+          const tdTotal = document.createElement('td');
+          tdTotal.textContent = totals[name];
+          tr.append(tdName, tdTotal);
+          totalsTbody.appendChild(tr);
+        });
+      });
+    }
+
+    // === 操作 ===
     function addName() {
-      const name = document.getElementById('newName').value;
+      const name = document.getElementById('newName').value.trim();
       if (!name) return;
       db.collection('names').add({ name });
       document.getElementById('newName').value = '';
@@ -139,51 +255,47 @@
 
     function addEntry() {
       const name = nameSelect.value;
-      const amount = Number(document.getElementById('amount').value);
+      const amountStr = document.getElementById('amount').value;
+      const amount = Number(amountStr);
       const date = document.getElementById('date').value;
-      if (!name || !amount || !date) return alert('すべて入力してください');
-
+      if (!name || amountStr === '' || isNaN(amount) || !date) {
+        return alert('すべて入力してください');
+      }
       db.collection('entries').add({ name, amount, date });
       clearForm();
     }
 
-    // ===== 編集・削除 追加機能 =====
-
-    // 編集開始：フォームに値をセット
     function startEdit(id, name, amount, date) {
       editingId = id;
       nameSelect.value = name;
       document.getElementById('amount').value = amount;
       document.getElementById('date').value = date;
 
-      addBtn.style.display = 'none';
-      updateBtn.style.display = 'block';
-      cancelBtn.style.display = 'block';
-      editHint.style.display = 'block';
+      addBtn.classList.add('hidden');
+      updateBtn.classList.remove('hidden');
+      cancelBtn.classList.remove('hidden');
+      editHint.classList.remove('hidden');
     }
 
-    // 更新処理
     function updateEntry() {
       if (!editingId) return;
       const name = nameSelect.value;
-      const amount = Number(document.getElementById('amount').value);
+      const amountStr = document.getElementById('amount').value;
+      const amount = Number(amountStr);
       const date = document.getElementById('date').value;
-      if (!name || !amount || !date) return alert('すべて入力してください');
-
+      if (!name || amountStr === '' || isNaN(amount) || !date) {
+        return alert('すべて入力してください');
+      }
       db.collection('entries').doc(editingId).update({ name, amount, date })
-        .then(() => {
-          clearForm();
-        });
+        .then(clearForm);
     }
 
-    // 削除処理
     function deleteEntry(id) {
       if (!confirm('この収支を削除しますか？')) return;
       db.collection('entries').doc(id).delete();
       if (editingId === id) clearForm();
     }
 
-    // 編集キャンセル／フォーム初期化
     function cancelEdit() {
       clearForm();
     }
@@ -191,12 +303,17 @@
     function clearForm() {
       editingId = null;
       document.getElementById('amount').value = '';
-      document.getElementById('date').value = '';
-      addBtn.style.display = 'block';
-      updateBtn.style.display = 'none';
-      cancelBtn.style.display = 'none';
-      editHint.style.display = 'none';
+      setDateDefault();
+      addBtn.classList.remove('hidden');
+      updateBtn.classList.add('hidden');
+      cancelBtn.classList.add('hidden');
+      editHint.classList.add('hidden');
     }
+
+    addBtn.addEventListener('click', addEntry);
+    updateBtn.addEventListener('click', updateEntry);
+    cancelBtn.addEventListener('click', cancelEdit);
+    addNameBtn.addEventListener('click', addName);
   </script>
 </body>
 </html>
