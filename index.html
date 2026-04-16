@@ -21,6 +21,11 @@
     .hidden { display: none; }
     #gate { max-width: 360px; margin: 48px auto; }
     #gateError { color: #b00; margin-top: 8px; }
+    .session-header td { background: #f5f5f5; font-weight: bold; }
+    .session-subtotal td { font-weight: bold; }
+    .session-subtotal.ok td { background: #e6ffe6; color: #060; }
+    .session-subtotal.bad td { background: #ffe0e0; color: #b00; }
+    #settleWarning { color: #b00; }
   </style>
 </head>
 <body>
@@ -46,6 +51,10 @@
     <label>日付</label>
     <input id="date" type="date" />
 
+    <label>会場</label>
+    <input id="venue" list="venueList" placeholder="例: ○○店 NLH 100/200" autocomplete="off" />
+    <datalist id="venueList"></datalist>
+
     <div class="row">
       <button id="addBtn">追加</button>
       <button id="updateBtn" class="hidden">更新</button>
@@ -59,25 +68,35 @@
       <button id="addNameBtn">追加</button>
     </div>
 
-    <h2>収支一覧</h2>
+    <h2>収支一覧（セッション別）</h2>
+    <p class="muted">同じ「日付 × 会場」を 1 セッションとしてまとめ、小計を表示します。±0 でないセッションは赤く警告します（入力漏れ/誤記の可能性）。</p>
     <table>
       <thead>
-        <tr><th>氏名</th><th>金額</th><th>日付</th><th>操作</th></tr>
+        <tr><th>氏名</th><th>金額</th><th>日付</th><th>会場</th><th>操作</th></tr>
       </thead>
       <tbody id="entries"></tbody>
     </table>
 
-    <h2>合計（氏名ごと）</h2>
+    <h2>合計（氏名ごと・勝ち順）</h2>
     <table>
       <thead>
         <tr><th>氏名</th><th>合計</th></tr>
       </thead>
       <tbody id="totals"></tbody>
     </table>
+
+    <h2>精算</h2>
+    <p class="muted">「誰が誰にいくら払えば全員の収支が 0 になるか」を少ない回数で提案します。</p>
+    <table>
+      <thead>
+        <tr><th>支払う人</th><th></th><th>受け取る人</th><th>金額</th></tr>
+      </thead>
+      <tbody id="settlement"></tbody>
+    </table>
+    <p id="settleWarning" class="hidden"></p>
   </div>
 
   <script>
-    // === Firebase 設定 ===
     const firebaseConfig = {
       apiKey: "AIzaSyCzGHaax123Mtu8MhQ7a7DBsFklXdGcDYg",
       authDomain: "sharebalance-12eed.firebaseapp.com",
@@ -88,15 +107,12 @@
       measurementId: "G-MDCJMN4DXZ"
     };
 
-    // === 合言葉 (SHA-256 ハッシュ) ===
-    // 差し替え手順はリポジトリの README を参照。
     const PASSCODE_SHA256 = "1ba393b460aa4b3f4de2c37d04b54f0bcb36c9f1f14d31ef5b9814f7bd169cea";
 
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    // === 要素 ===
     const gate = document.getElementById('gate');
     const app = document.getElementById('app');
     const passcodeInput = document.getElementById('passcodeInput');
@@ -106,6 +122,11 @@
     const nameSelect = document.getElementById('nameSelect');
     const entriesTbody = document.getElementById('entries');
     const totalsTbody = document.getElementById('totals');
+    const settlementTbody = document.getElementById('settlement');
+    const settleWarning = document.getElementById('settleWarning');
+    const venueInput = document.getElementById('venue');
+    const venueList = document.getElementById('venueList');
+
     const addBtn = document.getElementById('addBtn');
     const updateBtn = document.getElementById('updateBtn');
     const cancelBtn = document.getElementById('cancelBtn');
@@ -115,7 +136,6 @@
     let editingId = null;
     let subscribed = false;
 
-    // === ユーティリティ ===
     async function sha256Hex(text) {
       const buf = new TextEncoder().encode(text);
       const hash = await crypto.subtle.digest('SHA-256', buf);
@@ -129,7 +149,6 @@
       gateError.classList.remove('hidden');
     }
 
-    // === 合言葉ゲート ===
     async function tryUnlock() {
       gateError.classList.add('hidden');
       const input = passcodeInput.value;
@@ -167,14 +186,12 @@
       if (e.key === 'Enter') tryUnlock();
     });
 
-    // 既にセッション内でアンロック済みかチェック
     auth.onAuthStateChanged(user => {
       if (user && sessionStorage.getItem('sb_unlocked') === '1') {
         enterApp();
       }
     });
 
-    // === 初期値 ===
     function setDateDefault() {
       const d = new Date();
       const iso = d.getFullYear() + '-' +
@@ -183,7 +200,6 @@
       document.getElementById('date').value = iso;
     }
 
-    // === Firestore 購読 ===
     function subscribe() {
       db.collection('names').onSnapshot(snapshot => {
         nameSelect.replaceChildren();
@@ -196,56 +212,146 @@
       });
 
       db.collection('entries').orderBy('date').onSnapshot(snapshot => {
-        entriesTbody.replaceChildren();
-        const totals = {};
-
-        snapshot.forEach(doc => {
-          const d = doc.data();
-          const tr = document.createElement('tr');
-
-          const tdName = document.createElement('td');
-          tdName.textContent = d.name;
-          const tdAmount = document.createElement('td');
-          tdAmount.textContent = d.amount;
-          const tdDate = document.createElement('td');
-          tdDate.textContent = d.date;
-
-          const tdActions = document.createElement('td');
-          tdActions.className = 'actions';
-
-          const editBtn = document.createElement('button');
-          editBtn.textContent = '編集';
-          editBtn.dataset.id = doc.id;
-          editBtn.addEventListener('click', () => {
-            startEdit(doc.id, d.name, d.amount, d.date);
-          });
-
-          const delBtn = document.createElement('button');
-          delBtn.textContent = '削除';
-          delBtn.dataset.id = doc.id;
-          delBtn.addEventListener('click', () => deleteEntry(doc.id));
-
-          tdActions.append(editBtn, delBtn);
-          tr.append(tdName, tdAmount, tdDate, tdActions);
-          entriesTbody.appendChild(tr);
-
-          totals[d.name] = (totals[d.name] || 0) + Number(d.amount);
-        });
-
-        totalsTbody.replaceChildren();
-        Object.keys(totals).forEach(name => {
-          const tr = document.createElement('tr');
-          const tdName = document.createElement('td');
-          tdName.textContent = name;
-          const tdTotal = document.createElement('td');
-          tdTotal.textContent = totals[name];
-          tr.append(tdName, tdTotal);
-          totalsTbody.appendChild(tr);
-        });
+        const entries = [];
+        snapshot.forEach(doc => entries.push({ id: doc.id, ...doc.data() }));
+        render(entries);
       });
     }
 
-    // === 操作 ===
+    function render(entries) {
+      const venues = Array.from(new Set(entries.map(e => e.venue).filter(v => v)));
+      venueList.replaceChildren();
+      venues.sort().forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        venueList.appendChild(opt);
+      });
+
+      const groupMap = new Map();
+      entries.forEach(e => {
+        const venue = e.venue || '';
+        const key = e.date + '|' + venue;
+        if (!groupMap.has(key)) {
+          groupMap.set(key, { date: e.date, venue, items: [], subtotal: 0 });
+        }
+        const g = groupMap.get(key);
+        g.items.push(e);
+        g.subtotal += Number(e.amount);
+      });
+
+      const groups = Array.from(groupMap.values()).sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+        return a.venue < b.venue ? -1 : 1;
+      });
+
+      entriesTbody.replaceChildren();
+      groups.forEach(g => {
+        const headerTr = document.createElement('tr');
+        headerTr.className = 'session-header';
+        const headerTd = document.createElement('td');
+        headerTd.colSpan = 5;
+        headerTd.textContent = g.date + '   ' + (g.venue || '(会場未設定)');
+        headerTr.appendChild(headerTd);
+        entriesTbody.appendChild(headerTr);
+
+        g.items.forEach(e => {
+          const tr = document.createElement('tr');
+          const tdName = document.createElement('td'); tdName.textContent = e.name;
+          const tdAmount = document.createElement('td'); tdAmount.textContent = e.amount;
+          const tdDate = document.createElement('td'); tdDate.textContent = e.date;
+          const tdVenue = document.createElement('td'); tdVenue.textContent = e.venue || '';
+
+          const tdActions = document.createElement('td');
+          tdActions.className = 'actions';
+          const editBtn = document.createElement('button');
+          editBtn.textContent = '編集';
+          editBtn.addEventListener('click', () => {
+            startEdit(e.id, e.name, e.amount, e.date, e.venue || '');
+          });
+          const delBtn = document.createElement('button');
+          delBtn.textContent = '削除';
+          delBtn.addEventListener('click', () => deleteEntry(e.id));
+          tdActions.append(editBtn, delBtn);
+
+          tr.append(tdName, tdAmount, tdDate, tdVenue, tdActions);
+          entriesTbody.appendChild(tr);
+        });
+
+        const subTr = document.createElement('tr');
+        subTr.className = 'session-subtotal ' + (g.subtotal === 0 ? 'ok' : 'bad');
+        const subTd = document.createElement('td');
+        subTd.colSpan = 5;
+        subTd.textContent = g.subtotal === 0
+          ? '小計: ±0 OK'
+          : '小計: ' + g.subtotal + '（±0 になっていません）';
+        subTr.appendChild(subTd);
+        entriesTbody.appendChild(subTr);
+      });
+
+      const totals = {};
+      entries.forEach(e => {
+        totals[e.name] = (totals[e.name] || 0) + Number(e.amount);
+      });
+      const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+      totalsTbody.replaceChildren();
+      sorted.forEach(([name, amt]) => {
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td'); tdName.textContent = name;
+        const tdAmt = document.createElement('td'); tdAmt.textContent = amt;
+        tr.append(tdName, tdAmt);
+        totalsTbody.appendChild(tr);
+      });
+
+      renderSettlement(totals);
+    }
+
+    function renderSettlement(totals) {
+      settlementTbody.replaceChildren();
+      settleWarning.classList.add('hidden');
+
+      const sum = Object.values(totals).reduce((s, v) => s + v, 0);
+      if (sum !== 0) {
+        settleWarning.textContent = '⚠ 全体合計が ' + sum + ' で ±0 ではありません。セッション小計の赤い行を確認してください。';
+        settleWarning.classList.remove('hidden');
+      }
+
+      const creditors = [];
+      const debtors = [];
+      Object.entries(totals).forEach(([name, amt]) => {
+        if (amt > 0) creditors.push({ name, amt });
+        else if (amt < 0) debtors.push({ name, amt: -amt });
+      });
+      creditors.sort((a, b) => b.amt - a.amt);
+      debtors.sort((a, b) => b.amt - a.amt);
+
+      let i = 0, j = 0;
+      while (i < debtors.length && j < creditors.length) {
+        const pay = Math.min(debtors[i].amt, creditors[j].amt);
+        const tr = document.createElement('tr');
+        const tdFrom = document.createElement('td'); tdFrom.textContent = debtors[i].name;
+        const tdArrow = document.createElement('td'); tdArrow.textContent = '→';
+        const tdTo = document.createElement('td'); tdTo.textContent = creditors[j].name;
+        const tdAmt = document.createElement('td'); tdAmt.textContent = pay;
+        tr.append(tdFrom, tdArrow, tdTo, tdAmt);
+        settlementTbody.appendChild(tr);
+
+        debtors[i].amt -= pay;
+        creditors[j].amt -= pay;
+        if (debtors[i].amt === 0) i++;
+        if (creditors[j].amt === 0) j++;
+      }
+
+      if (settlementTbody.children.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.textContent = '精算不要（全員 ±0）';
+        td.style.color = '#060';
+        tr.appendChild(td);
+        settlementTbody.appendChild(tr);
+      }
+    }
+
     function addName() {
       const name = document.getElementById('newName').value.trim();
       if (!name) return;
@@ -258,18 +364,20 @@
       const amountStr = document.getElementById('amount').value;
       const amount = Number(amountStr);
       const date = document.getElementById('date').value;
+      const venue = venueInput.value.trim();
       if (!name || amountStr === '' || isNaN(amount) || !date) {
-        return alert('すべて入力してください');
+        return alert('氏名・金額・日付を入力してください');
       }
-      db.collection('entries').add({ name, amount, date });
+      db.collection('entries').add({ name, amount, date, venue });
       clearForm();
     }
 
-    function startEdit(id, name, amount, date) {
+    function startEdit(id, name, amount, date, venue) {
       editingId = id;
       nameSelect.value = name;
       document.getElementById('amount').value = amount;
       document.getElementById('date').value = date;
+      venueInput.value = venue || '';
 
       addBtn.classList.add('hidden');
       updateBtn.classList.remove('hidden');
@@ -283,10 +391,11 @@
       const amountStr = document.getElementById('amount').value;
       const amount = Number(amountStr);
       const date = document.getElementById('date').value;
+      const venue = venueInput.value.trim();
       if (!name || amountStr === '' || isNaN(amount) || !date) {
-        return alert('すべて入力してください');
+        return alert('氏名・金額・日付を入力してください');
       }
-      db.collection('entries').doc(editingId).update({ name, amount, date })
+      db.collection('entries').doc(editingId).update({ name, amount, date, venue })
         .then(clearForm);
     }
 
@@ -303,6 +412,7 @@
     function clearForm() {
       editingId = null;
       document.getElementById('amount').value = '';
+      venueInput.value = '';
       setDateDefault();
       addBtn.classList.remove('hidden');
       updateBtn.classList.add('hidden');

@@ -31,13 +31,19 @@ service cloud.firestore {
       allow delete: if isAuthed();
     }
 
+    function validVenue(v) {
+      return v is string && v.size() <= 100;
+    }
+
     match /entries/{doc} {
       allow read: if isAuthed();
       allow create, update: if isAuthed()
-        && request.resource.data.keys().hasOnly(['name', 'amount', 'date'])
+        && request.resource.data.keys().hasAll(['name', 'amount', 'date'])
+        && request.resource.data.keys().hasOnly(['name', 'amount', 'date', 'venue'])
         && validName(request.resource.data.name)
         && validAmount(request.resource.data.amount)
-        && validDate(request.resource.data.date);
+        && validDate(request.resource.data.date)
+        && (!('venue' in request.resource.data) || validVenue(request.resource.data.venue));
       allow delete: if isAuthed();
     }
 
