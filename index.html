@@ -548,6 +548,9 @@
     function addName() {
       const name = document.getElementById('newName').value.trim();
       if (!name) return;
+      const lower = name.toLowerCase();
+      const duplicate = Array.from(nameSelect.options).some(opt => opt.value.toLowerCase() === lower);
+      if (duplicate) { alert('「' + name + '」はすでに登録されています'); return; }
       db.collection('names').add({ name });
       document.getElementById('newName').value = '';
     }
